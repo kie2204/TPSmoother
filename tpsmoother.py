@@ -137,7 +137,7 @@ def main(args=parser.parse_args("")):
                 
             delay = 1 / (frequency * args.multiplier)
             for i in range(1, args.multiplier):
-                if frequency < 10: break
+                if frequency < args.min_frequency: break
                 time.sleep(delay)
                 
                 for rel_event in rel_smoothed_events[i]:
