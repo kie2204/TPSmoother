@@ -11,7 +11,7 @@ parser.add_argument(
     "-d",
     "--device",
     help="Input device to use. (e.g. /dev/input/event1)",
-    # required=True
+    required=True
 )
 parser.add_argument(
     "-g",
@@ -30,8 +30,8 @@ parser.add_argument(
     "-f",
     "--min-frequency",
     type=int,
-    default=10,
-    help="Minimum input frequency where smoothing is applied."
+    default=30,
+    help="Minimum smoothing frequency. When real input frequency is below this value, the smoothing timer is forcibly set based on the specified minimum frequency."
 )
 parser.add_argument(
     "-v",
@@ -73,7 +73,7 @@ def logv(*values):
     if verbose:
         print(*values)
 
-def main(args=parser.parse_args("")):    
+def main(args):
     device = InputDevice(args.device)
 
     print(f"Using device {args.device} - {device.name}")
@@ -135,9 +135,10 @@ def main(args=parser.parse_args("")):
             last_counter = counter
             logv(frequency)
                 
+            if frequency < args.min_frequency:
+                frequency = args.min_frequency
             delay = 1 / (frequency * args.multiplier)
             for i in range(1, args.multiplier):
-                if frequency < args.min_frequency: break
                 time.sleep(delay)
                 
                 for rel_event in rel_smoothed_events[i]:
