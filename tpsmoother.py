@@ -122,7 +122,7 @@ def gen_abs_events(
 
 def get_capabilities_str(device: InputDevice):
     caps = device.capabilities()
-    ecode = lambda t, c: ecodes.bytype[t][c]
+    ecode = lambda t, c: ecodes.bytype.get(t, []).get(c, f"? ({c})") 
 
     out = []
 
