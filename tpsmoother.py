@@ -92,7 +92,7 @@ def gen_abs_events(
     # Generate initial smoothed event
     for event in initial_smoothable_events.values():
         last_abs_event = last_abs_events.get(event.code)
-        last_abs_events[event.code] = event
+        last_abs_events[event.code] = events.InputEvent(None, None, event.type, event.code, event.value)
         if last_abs_event is None:
             final_smoothable_events.pop(event.code)
         else:
