@@ -116,9 +116,7 @@ def gen_abs_events(
     out = (initial_events,) + tuple([list() for _ in range(multiplier-1)])
     
     for mt_slot, mt_events in initial_smoothable_mt_events.items():
-        print(mt_slot, mt_events)
-        slot_last_events = last_abs_mt_events.setdefault(mt_slot, dict())
-            
+        slot_last_events = last_abs_mt_events.setdefault(mt_slot, dict()) 
         slot_final_events = final_smoothable_mt_events.get(mt_slot)
         
         if len(mt_events) == 0:
