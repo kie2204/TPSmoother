@@ -172,12 +172,12 @@ def gen_abs_events(
         out[multiplier - 1].append(event)
         
     # Print virtual events (for testing)
-    i = 0
-    for evs in out:
-        print(f"Virtual event {i}:")
-        i += 1
-        for event in evs:
-            print(f"  {event_str(event)}")
+    # i = 0
+    # for evs in out:
+    #     print(f"Virtual event {i}:")
+    #     i += 1
+    #     for event in evs:
+    #         print(f"  {event_str(event)}")
     return out
 
 
