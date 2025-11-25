@@ -37,6 +37,8 @@ parser.add_argument(
     "-v", "--verbose", action="store_true", help="Log verbose output in terminal."
 )
 
+def ecopy(event: events.InputEvent) -> events.InputEvent:
+    return events.InputEvent(event.sec, event.usec, event.type, event.code, event.value)
 
 def gen_rel_events(
     queue: queue.Queue[events.RelEvent], multiplier: int
@@ -44,22 +46,27 @@ def gen_rel_events(
     event_list = []
     while queue.qsize() != 0:
         event = queue.get()
-        event_list.append(events.InputEvent(None, None, event.type, event.code, event.value))
+        event_list.append(ecopy(event))
 
     out = (event_list,) * multiplier
     return out
 
 
 ABS_SMOOTHING_WHITELIST = [
-    ecodes.ABS_MT_POSITION_X,
-    ecodes.ABS_MT_POSITION_Y,
-    ecodes.ABS_MT_PRESSURE,
     ecodes.ABS_PRESSURE,
     ecodes.ABS_X,
     ecodes.ABS_Y,
 ]
 
-last_abs_events: dict[int, events.AbsEvent] = dict()
+ABS_MT_SMOOTHING_WHITELIST = [
+    ecodes.ABS_MT_POSITION_X,
+    ecodes.ABS_MT_POSITION_Y,
+    ecodes.ABS_MT_PRESSURE,
+]
+
+last_abs_events: dict[int, events.AbsEvent] = dict() # event.code -> event
+last_abs_mt_events: dict[int, dict[int, events.AbsEvent]] = dict() # abs_mt_slot -> event.code -> event
+last_mt_slot: int = 0
 
 def lerp(x: int, y: int, weight: float):
     return x * (1 - weight) + y * weight
@@ -67,32 +74,85 @@ def lerp(x: int, y: int, weight: float):
 def gen_abs_events(
     queue: queue.Queue[events.AbsEvent], multiplier: int
 ) -> tuple[list[events.AbsEvent]]:
+    global last_mt_slot
 
     # Process initial event
     initial_events = []
     
     initial_smoothable_events = dict()
+    initial_smoothable_mt_events = dict()
+    
     final_smoothable_events = dict()
+    final_smoothable_mt_events = dict()
     
     while queue.qsize() != 0:
         event = queue.get()
-        event_initial_copy = events.InputEvent(None, None, event.type, event.code, event.value)
-        event_final_copy = events.InputEvent(None, None, event.type, event.code, event.value)
+        event_initial_copy = ecopy(event)
+        event_final_copy = ecopy(event)
         initial_events.append(event_initial_copy)
         
-        if event.code == ecodes.ABS_MT_TRACKING_ID and event.value == -1:
-            last_abs_events.clear();
+        if event.code == ecodes.ABS_MT_SLOT:
+            last_mt_slot = event.value
+        
+        if (event.code == ecodes.ABS_MT_TRACKING_ID and event.value == -1) or event.code == ecodes.BTN_TOOL_DOUBLETAP:
+            last_abs_events.clear()
+            last_abs_mt_events.clear()
         
         if event.code in ABS_SMOOTHING_WHITELIST:
             initial_smoothable_events[event.code] = event_initial_copy
             final_smoothable_events[event.code] = event_final_copy
+            
+        if event.code in ABS_MT_SMOOTHING_WHITELIST:
+            if initial_smoothable_mt_events.get(last_mt_slot) is None: 
+                initial_smoothable_mt_events[last_mt_slot] = dict()
+                
+            if final_smoothable_mt_events.get(last_mt_slot) is None: 
+                final_smoothable_mt_events[last_mt_slot] = dict()
+                
+            initial_smoothable_mt_events[last_mt_slot][event.code] = event_initial_copy
+            final_smoothable_mt_events[last_mt_slot][event.code] = event_final_copy
+            
 
     out = (initial_events,) + tuple([list() for _ in range(multiplier-1)])
+    
+    for mt_slot, mt_events in initial_smoothable_mt_events.items():
+        print(mt_slot, mt_events)
+        slot_last_events = last_abs_mt_events.setdefault(mt_slot, dict())
+            
+        slot_final_events = final_smoothable_mt_events.get(mt_slot)
+        
+        if len(mt_events) == 0:
+            slot_last_events.clear()
+            break
+        
+        for i in range(1, multiplier):
+            slot_event = events.InputEvent(None, None, ecodes.EV_ABS, ecodes.ABS_MT_SLOT, mt_slot)
+            out[i].append(slot_event)
+        
+        for event in mt_events.values():
+            slot_last_event = slot_last_events.get(event.code)
+            slot_last_events[event.code] = ecopy(event)
+            if slot_last_event is None:
+                slot_final_events.pop(event.code)
+            else:
+                original_value = event.value
+                event.value = int(lerp(slot_last_event.value, original_value, 1/multiplier))
+                
+                # Intermediate smoothing events
+                for i in range(1, multiplier-1):
+                    i_value = int(lerp(slot_last_event.value, original_value, (i+1)/multiplier))
+                    i_event = ecopy(event)
+                    i_event.value = i_value
+                    out[i].append(i_event)
+        
+        for event in slot_final_events.values():
+            out[multiplier - 1].append(event)
+            
     
     # Generate initial smoothed event
     for event in initial_smoothable_events.values():
         last_abs_event = last_abs_events.get(event.code)
-        last_abs_events[event.code] = events.InputEvent(None, None, event.type, event.code, event.value)
+        last_abs_events[event.code] = ecopy(event)
         if last_abs_event is None:
             final_smoothable_events.pop(event.code)
         else:
@@ -102,7 +162,8 @@ def gen_abs_events(
             # Intermediate smoothing events
             for i in range(1, multiplier-1):
                 i_value = int(lerp(last_abs_event.value, original_value, (i+1)/multiplier))
-                i_event = events.InputEvent(None, None, event.type, event.code, i_value)
+                i_event = ecopy(event)
+                i_event.value = i_value
                 out[i].append(i_event)
             
     
@@ -111,12 +172,12 @@ def gen_abs_events(
         out[multiplier - 1].append(event)
         
     # Print virtual events (for testing)
-    # i = 0
-    # for evs in out:
-    #     print(f"Virtual event {i}:")
-    #     i += 1
-    #     for event in evs:
-    #         print(f"  {event_str(event)}")
+    i = 0
+    for evs in out:
+        print(f"Virtual event {i}:")
+        i += 1
+        for event in evs:
+            print(f"  {event_str(event)}")
     return out
 
 
