@@ -257,10 +257,12 @@ def main(args):
             event_queue.put(event)
 
         if event.type == ecodes.EV_SYN:
-            frequency: int
+            frequency: float
+            multiplier: int
+            
             counter = time.perf_counter()
             if last_counter is None:
-                frequency = 60
+                frequency = args.min_frequency
             else:
                 delta = time.perf_counter() - last_counter
                 frequency = 1 / delta
@@ -271,7 +273,6 @@ def main(args):
             if frequency < args.min_frequency:
                 frequency = args.min_frequency
             
-            multiplier: int
             if args.multiplier is None:
                 multiplier = int(args.target_hz / frequency) + 1
             else:
