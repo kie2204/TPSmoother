@@ -20,11 +20,18 @@ parser.add_argument(
     help="Grab the input device. Blocks other applications from recieving the real input.",
 )
 parser.add_argument(
+    "-t",
+    "--target-hz",
+    type=int,
+    default=120,
+    help="Target minimum frequency for virtual input device. The multiplier will be adjusted dynamically to achieve the specified polling rate.",
+)
+parser.add_argument(
     "-m",
     "--multiplier",
     type=int,
-    default=3,
-    help="Event multiplier, i.e. how many smoothed virtual events should be generated from one real input event.",
+    default=None,
+    help="Static event multiplier, i.e. how many smoothed virtual events should be generated from one real input event. Overrides --target-hz.",
 )
 parser.add_argument(
     "-f",
@@ -220,7 +227,10 @@ def main(args):
     logv("Supported capabilities:")
     logv(get_capabilities_str(device))
 
-    print(f"Smoothing with {args.multiplier}x multiplier.")
+    if args.multiplier is None:
+        print(f"Smoothing to {args.target_hz}Hz target.")
+    else:
+        print(f"Smoothing with static multiplier ({args.multiplier}x).")
 
     # Create virtual device
     ui = UInput.from_device(device, name=f"{device.name} (TPSmoother)")
@@ -247,8 +257,28 @@ def main(args):
             event_queue.put(event)
 
         if event.type == ecodes.EV_SYN:
-            rel_smoothed_events = gen_rel_events(rel_queue, args.multiplier)
-            abs_smoothed_events = gen_abs_events(abs_queue, args.multiplier)
+            frequency: int
+            counter = time.perf_counter()
+            if last_counter is None:
+                frequency = 60
+            else:
+                delta = time.perf_counter() - last_counter
+                frequency = 1 / delta
+
+            last_counter = counter
+            logv(frequency)
+
+            if frequency < args.min_frequency:
+                frequency = args.min_frequency
+            
+            multiplier: int
+            if args.multiplier is None:
+                multiplier = int(args.target_hz / frequency) + 1
+            else:
+                multiplier = args.multiplier
+            
+            rel_smoothed_events = gen_rel_events(rel_queue, multiplier)
+            abs_smoothed_events = gen_abs_events(abs_queue, multiplier)
 
             for rel_event in rel_smoothed_events[0]:
                 ui.write(rel_event.type, rel_event.code, rel_event.value)
@@ -264,22 +294,9 @@ def main(args):
             ui.syn()
             logv(f"-- SYN ({ecodes.bytype[event.type][event.code]}) --")
 
-            # After original event, send smoothed events
-            frequency: int
-            counter = time.perf_counter()
-            if last_counter is None:
-                frequency = 60
-            else:
-                delta = time.perf_counter() - last_counter
-                frequency = 1 / delta
-
-            last_counter = counter
-            logv(frequency)
-
-            if frequency < args.min_frequency:
-                frequency = args.min_frequency
-            delay = 1 / (frequency * args.multiplier)
-            for i in range(1, args.multiplier):
+            # After original event, send smoothed events    
+            delay = 1 / (frequency * multiplier)
+            for i in range(1, multiplier):
                 time.sleep(delay)
 
                 for rel_event in rel_smoothed_events[i]:
