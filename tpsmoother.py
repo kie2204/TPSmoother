@@ -97,6 +97,7 @@ def gen_abs_events(
         if (event.code == ecodes.ABS_MT_TRACKING_ID and event.value == -1) or event.code == ecodes.BTN_TOOL_DOUBLETAP:
             last_abs_events.clear()
             last_abs_mt_events.clear()
+            last_mt_slot = 0
         
         if event.code in ABS_SMOOTHING_WHITELIST:
             initial_smoothable_events[event.code] = event_initial_copy
