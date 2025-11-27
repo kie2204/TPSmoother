@@ -151,8 +151,9 @@ def gen_abs_events(
                     i_event.value = i_value
                     out[i].append(i_event)
         
-        for event in slot_final_events.values():
-            out[multiplier - 1].append(event)
+        if multiplier > 1:
+            for event in slot_final_events.values():
+                out[multiplier - 1].append(event)
             
     
     # Generate initial smoothed event
@@ -174,8 +175,9 @@ def gen_abs_events(
             
     
     # Final smoothed event
-    for event in final_smoothable_events.values():
-        out[multiplier - 1].append(event)
+    if multiplier > 1:
+        for event in final_smoothable_events.values():
+            out[multiplier - 1].append(event)
         
     # Print virtual events (for testing)
     # i = 0
