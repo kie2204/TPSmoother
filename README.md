@@ -1,6 +1,9 @@
 # TPSmoother
 A script to improve the smoothness of pointing devices with low polling rate on Linux (e.g. TrackPoint or touchpad)
 
+> [!NOTE]
+> Early development, there may be bugs, missing features, or compatibility issues with some devices.
+
 ## How to use
 
 ### Prerequisites
