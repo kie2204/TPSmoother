@@ -71,12 +71,27 @@ ABS_MT_SMOOTHING_WHITELIST = [
     ecodes.ABS_MT_PRESSURE,
 ]
 
+ABS_RESET_CODES = [
+    ecodes.BTN_TOOL_DOUBLETAP,
+    ecodes.BTN_TOOL_TRIPLETAP,
+    ecodes.BTN_TOOL_QUADTAP,
+    ecodes.BTN_TOOL_QUINTTAP,
+    ecodes.BTN_TOOL_FINGER
+]
+
 last_abs_events: dict[int, events.AbsEvent] = dict() # event.code -> event
 last_abs_mt_events: dict[int, dict[int, events.AbsEvent]] = dict() # abs_mt_slot -> event.code -> event
 last_mt_slot: int = 0
 
 def lerp(x: int, y: int, weight: float):
     return x * (1 - weight) + y * weight
+
+def reset_abs_events():
+    global last_mt_slot
+    
+    last_abs_events.clear()
+    last_abs_mt_events.clear()
+    last_mt_slot = 0
 
 def gen_abs_events(
     queue: queue.Queue[events.AbsEvent], multiplier: int
@@ -101,10 +116,8 @@ def gen_abs_events(
         if event.code == ecodes.ABS_MT_SLOT:
             last_mt_slot = event.value
         
-        if (event.code == ecodes.ABS_MT_TRACKING_ID and event.value == -1) or event.code == ecodes.BTN_TOOL_DOUBLETAP:
-            last_abs_events.clear()
-            last_abs_mt_events.clear()
-            last_mt_slot = 0
+        if (event.code == ecodes.ABS_MT_TRACKING_ID and event.value == -1):
+            reset_abs_events()
         
         if event.code in ABS_SMOOTHING_WHITELIST:
             initial_smoothable_events[event.code] = event_initial_copy
@@ -188,7 +201,6 @@ def gen_abs_events(
     #         print(f"  {event_str(event)}")
     return out
 
-
 def get_capabilities_str(device: InputDevice):
     caps = device.capabilities()
     ecode = lambda t, c: ecodes.bytype.get(t, []).get(c, f"? ({c})") 
@@ -257,6 +269,9 @@ def main(args):
             abs_queue.put(event)
         else:
             event_queue.put(event)
+            
+        if event.code in ABS_RESET_CODES:
+            reset_abs_events()
 
         if event.type == ecodes.EV_SYN:
             frequency: float
