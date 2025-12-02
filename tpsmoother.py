@@ -80,6 +80,7 @@ ABS_RESET_CODES = [
 ]
 
 last_abs_events: dict[int, events.AbsEvent] = dict() # event.code -> event
+last_abs_mt_tracking_ids: dict[int, int] = dict() # abs_mt_slot -> abs_mt_tracking_id
 last_abs_mt_events: dict[int, dict[int, events.AbsEvent]] = dict() # abs_mt_slot -> event.code -> event
 last_mt_slot: int = 0
 
@@ -87,11 +88,8 @@ def lerp(x: int, y: int, weight: float):
     return x * (1 - weight) + y * weight
 
 def reset_abs_events():
-    global last_mt_slot
-    
     last_abs_events.clear()
     last_abs_mt_events.clear()
-    last_mt_slot = 0
 
 def gen_abs_events(
     queue: queue.Queue[events.AbsEvent], multiplier: int
@@ -116,8 +114,9 @@ def gen_abs_events(
         if event.code == ecodes.ABS_MT_SLOT:
             last_mt_slot = event.value
         
-        if (event.code == ecodes.ABS_MT_TRACKING_ID and event.value == -1):
-            reset_abs_events()
+        if event.code == ecodes.ABS_MT_TRACKING_ID:
+            last_abs_mt_tracking_ids[last_mt_slot] = event.value
+            last_abs_mt_events.get(last_mt_slot, dict()).clear()
         
         if event.code in ABS_SMOOTHING_WHITELIST:
             initial_smoothable_events[event.code] = event_initial_copy
@@ -159,6 +158,7 @@ def gen_abs_events(
                 
                 # Intermediate smoothing events
                 for i in range(1, multiplier-1):
+                    if abs(slot_last_event.value - original_value) > 100: logv("Huge delta alert!!!")
                     i_value = int(lerp(slot_last_event.value, original_value, (i+1)/multiplier))
                     i_event = ecopy(event)
                     i_event.value = i_value
@@ -193,12 +193,12 @@ def gen_abs_events(
             out[multiplier - 1].append(event)
         
     # Print virtual events (for testing)
-    # i = 0
-    # for evs in out:
-    #     print(f"Virtual event {i}:")
-    #     i += 1
-    #     for event in evs:
-    #         print(f"  {event_str(event)}")
+    i = 0
+    for evs in out:
+        print(f"Virtual event {i}:")
+        i += 1
+        for event in evs:
+            print(f"  {event_str(event)}")
     return out
 
 def get_capabilities_str(device: InputDevice):
