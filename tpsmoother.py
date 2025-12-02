@@ -41,6 +41,12 @@ parser.add_argument(
     help="Minimum smoothing frequency. When real input frequency is below this value, the smoothing timer is forcibly set based on the specified minimum frequency.",
 )
 parser.add_argument(
+    "--mt-max-position-delta",
+    type=int,
+    default=500,
+    help="Maximum position change for multitouch events before smoothing is skipped. Avoids jumps when touchpad hardware does not register slot changes quickly enough."
+)
+parser.add_argument(
     "-v", "--verbose", action="store_true", help="Log verbose output in terminal."
 )
 
@@ -99,11 +105,11 @@ def gen_abs_events(
     # Process initial event
     initial_events = []
     
-    initial_smoothable_events = dict()
-    initial_smoothable_mt_events = dict()
+    initial_smoothable_events: dict[int, dict[int, events.InputEvent]] = dict()
+    initial_smoothable_mt_events: dict[int, dict[int, events.InputEvent]] = dict()
     
-    final_smoothable_events = dict()
-    final_smoothable_mt_events = dict()
+    final_smoothable_events: dict[int, dict[int, events.InputEvent]] = dict()
+    final_smoothable_mt_events: dict[int, dict[int, events.InputEvent]] = dict()
     
     while queue.qsize() != 0:
         event = queue.get()
@@ -143,6 +149,26 @@ def gen_abs_events(
             slot_last_events.clear()
             break
         
+        this_x_ev = mt_events.get(ecodes.ABS_MT_POSITION_X)
+        this_y_ev = mt_events.get(ecodes.ABS_MT_POSITION_Y)    
+        last_x_ev = slot_last_events.get(ecodes.ABS_MT_POSITION_X)
+        last_y_ev = slot_last_events.get(ecodes.ABS_MT_POSITION_Y)
+        
+        last_x = 0 if last_x_ev is None else last_x_ev.value
+        last_y = 0 if last_y_ev is None else last_y_ev.value
+        this_x = last_x if this_x_ev is None or last_x == 0 else this_x_ev.value
+        this_y = last_y if this_y_ev is None or last_y == 0 else this_y_ev.value
+        
+        distance = (
+            (this_x - last_x)**2 +
+            (this_y - last_y)**2
+        ) ** 0.5
+        
+        if distance > args.mt_max_position_delta:
+            logv(f"Smoothing skipped for MT slot {mt_slot}, too high distance! ({distance} > {args.mt_max_position_delta})")
+            slot_last_events.clear()
+            break
+        
         for i in range(1, multiplier):
             slot_event = events.InputEvent(None, None, ecodes.EV_ABS, ecodes.ABS_MT_SLOT, mt_slot)
             out[i].append(slot_event)
@@ -158,7 +184,6 @@ def gen_abs_events(
                 
                 # Intermediate smoothing events
                 for i in range(1, multiplier-1):
-                    if abs(slot_last_event.value - original_value) > 100: logv("Huge delta alert!!!")
                     i_value = int(lerp(slot_last_event.value, original_value, (i+1)/multiplier))
                     i_event = ecopy(event)
                     i_event.value = i_value
