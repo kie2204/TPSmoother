@@ -217,10 +217,12 @@ def gen_abs_events(
         for event in final_smoothable_events.values():
             out[multiplier - 1].append(event)
         
+    if not verbose: return out
+    
     # Print virtual events (for testing)
     i = 0
     for evs in out:
-        print(f"Virtual event {i}:")
+        print(f"Virtual ABS event {i}:")
         i += 1
         for event in evs:
             print(f"  {event_str(event)}")
